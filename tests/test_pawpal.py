@@ -1,5 +1,6 @@
 import pytest
-from pawpal_system import Task, Pet, Owner, Scheduler, Priority
+from datetime import date, timedelta
+from pawpal_system import Task, Pet, Owner, Scheduler, Priority, Frequency
 
 
 # --- Task tests ---
@@ -69,7 +70,7 @@ def test_can_fit_false_when_no_time():
     assert owner.can_fit(task, used_minutes=30) is False
 
 
-# --- Scheduler tests ---
+# --- Scheduler: priority and skipping ---
 
 def test_schedule_respects_priority_order():
     """High priority tasks should appear before lower priority ones."""
@@ -96,3 +97,119 @@ def test_schedule_skips_tasks_that_dont_fit():
     plan = Scheduler(owner).generate_schedule()
     assert len(plan.skipped_tasks) == 1
     assert plan.skipped_tasks[0].title == "Long run"
+
+
+# --- Sorting ---
+
+def test_sort_by_time_orders_correctly():
+    """Tasks with scheduled_time should sort chronologically; unscheduled go last."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(Task("Afternoon walk", "walk", 20, Priority.LOW, scheduled_time="14:00"))
+    pet.add_task(Task("Morning meds", "medication", 5, Priority.HIGH, scheduled_time="07:00"))
+    pet.add_task(Task("Playtime", "enrichment", 15, Priority.LOW))  # no time
+
+    owner = Owner(name="Jordan", available_minutes=120)
+    owner.add_pet(pet)
+
+    scheduler = Scheduler(owner)
+    sorted_tasks = scheduler.sort_by_time(owner.get_all_tasks())
+    assert sorted_tasks[0].title == "Morning meds"
+    assert sorted_tasks[1].title == "Afternoon walk"
+    assert sorted_tasks[2].title == "Playtime"
+
+
+# --- Filtering ---
+
+def test_filter_by_pet_name():
+    mochi = Pet(name="Mochi", species="dog", age=3)
+    luna = Pet(name="Luna", species="cat", age=5)
+    mochi.add_task(Task("Walk", "walk", 30, Priority.HIGH))
+    luna.add_task(Task("Brushing", "grooming", 15, Priority.MEDIUM))
+
+    owner = Owner(name="Jordan", available_minutes=120)
+    owner.add_pet(mochi)
+    owner.add_pet(luna)
+
+    scheduler = Scheduler(owner)
+    luna_only = scheduler.filter_tasks(owner.get_all_tasks(), pet_name="Luna")
+    assert len(luna_only) == 1
+    assert luna_only[0].title == "Brushing"
+
+
+def test_filter_by_task_type():
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(Task("Walk", "walk", 30, Priority.HIGH))
+    pet.add_task(Task("Feeding", "feeding", 10, Priority.HIGH))
+    pet.add_task(Task("Run", "walk", 20, Priority.MEDIUM))
+
+    owner = Owner(name="Jordan", available_minutes=120)
+    owner.add_pet(pet)
+
+    scheduler = Scheduler(owner)
+    walks = scheduler.filter_tasks(owner.get_all_tasks(), task_type="walk")
+    assert len(walks) == 2
+
+
+# --- Conflict detection ---
+
+def test_detects_time_conflict():
+    """Two tasks at the same time should produce a conflict warning."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(Task("Walk", "walk", 30, Priority.HIGH, scheduled_time="07:00"))
+    pet.add_task(Task("Meds", "medication", 5, Priority.HIGH, scheduled_time="07:00"))
+
+    owner = Owner(name="Jordan", available_minutes=60)
+    owner.add_pet(pet)
+
+    plan = Scheduler(owner).generate_schedule()
+    assert len(plan.conflicts) == 1
+    assert "07:00" in plan.conflicts[0]
+
+
+def test_no_conflict_when_different_times():
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(Task("Walk", "walk", 30, Priority.HIGH, scheduled_time="07:00"))
+    pet.add_task(Task("Meds", "medication", 5, Priority.HIGH, scheduled_time="08:00"))
+
+    owner = Owner(name="Jordan", available_minutes=60)
+    owner.add_pet(pet)
+
+    plan = Scheduler(owner).generate_schedule()
+    assert len(plan.conflicts) == 0
+
+
+# --- Recurring tasks ---
+
+def test_daily_task_creates_next_occurrence():
+    """Completing a daily task should produce a new task due tomorrow."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    today = date.today()
+    walk = Task("Walk", "walk", 30, Priority.HIGH, frequency=Frequency.DAILY, due_date=today)
+    pet.add_task(walk)
+
+    pet.complete_task(walk)
+    assert walk.completed is True
+    assert len(pet.tasks) == 2
+    next_task = pet.tasks[1]
+    assert next_task.due_date == today + timedelta(days=1)
+    assert next_task.completed is False
+
+
+def test_weekly_task_creates_next_occurrence():
+    today = date.today()
+    groom = Task("Grooming", "grooming", 30, Priority.MEDIUM, frequency=Frequency.WEEKLY, due_date=today)
+    pet = Pet(name="Luna", species="cat", age=5)
+    pet.add_task(groom)
+
+    pet.complete_task(groom)
+    assert len(pet.tasks) == 2
+    assert pet.tasks[1].due_date == today + timedelta(days=7)
+
+
+def test_once_task_does_not_recur():
+    pet = Pet(name="Mochi", species="dog", age=3)
+    task = Task("Vet visit", "other", 60, Priority.HIGH, frequency=Frequency.ONCE)
+    pet.add_task(task)
+
+    pet.complete_task(task)
+    assert len(pet.tasks) == 1  # no new task created

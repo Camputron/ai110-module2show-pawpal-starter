@@ -4,13 +4,96 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+The system is designed around three core user actions:
+
+1. **Add a pet care task** — The user can create tasks (e.g., morning walk, feeding, medication) by specifying a title, estimated duration in minutes, and a priority level (low, medium, or high). Each task is stored and can be reviewed or edited before scheduling.
+
+2. **Generate a daily schedule** — The user triggers the scheduler, which takes the full task list along with constraints (available time in the day, task priorities) and produces an ordered plan. The scheduler decides which tasks to include and in what order based on priority and time fit.
+
+3. **View today's plan with reasoning** — The user sees the final schedule displayed clearly, with an explanation for each task — why it was included (or excluded), when it is slotted, and how long it takes. This makes the plan transparent and trustworthy rather than a black box.
+
+**UML Class Diagram (Mermaid.js):**
+
+```mermaid
+classDiagram
+    class Owner {
+        +String name
+        +int available_minutes
+        +can_fit(task) bool
+    }
+
+    class Pet {
+        +String name
+        +String species
+        +int age
+        +List~String~ special_needs
+        +summary() String
+    }
+
+    class Task {
+        +String title
+        +String task_type
+        +int duration_minutes
+        +String priority
+        +bool completed
+        +is_high_priority() bool
+        +mark_complete()
+    }
+
+    class Scheduler {
+        +List~Task~ tasks
+        +Owner owner
+        +Pet pet
+        +generate_schedule() ScheduledPlan
+        +explain_plan(plan) dict
+    }
+
+    class ScheduledPlan {
+        +List~Task~ scheduled_tasks
+        +List~Task~ skipped_tasks
+        +int total_time
+        +dict reasoning
+        +display() String
+    }
+
+    Owner "1" --> "1" Pet : owns
+    Owner "1" --> "1" Scheduler : uses
+    Scheduler "1" --> "many" Task : manages
+    Scheduler "1" --> "1" ScheduledPlan : produces
+    ScheduledPlan "1" --> "many" Task : contains
+```
+
+**Building blocks — main objects in the system:**
+
+**Task**
+- Attributes: `title` (str), `duration_minutes` (int), `priority` (str: low/medium/high), `task_type` (str: walk/feeding/medication/grooming/etc.), `completed` (bool)
+- Methods: `is_high_priority()` → returns True if priority is high; `mark_complete()` → sets completed to True
+
+**Pet**
+- Attributes: `name` (str), `species` (str), `age` (int), `special_needs` (list of str)
+- Methods: `summary()` → returns a readable description of the pet
+
+**Owner**
+- Attributes: `name` (str), `available_minutes` (int — total time available in the day)
+- Methods: `can_fit(task)` → checks if a task's duration fits within remaining available time
+
+**Scheduler**
+- Attributes: `tasks` (list of Task), `owner` (Owner), `pet` (Pet)
+- Methods: `generate_schedule()` → sorts and filters tasks by priority and time, returns an ordered plan; `explain_plan(plan)` → produces a human-readable explanation for each included/excluded task
+
+**ScheduledPlan**
+- Attributes: `scheduled_tasks` (ordered list of Task), `skipped_tasks` (list of Task), `total_time` (int), `reasoning` (dict mapping task to explanation string)
+- Methods: `display()` → formats the plan for output in the UI
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+After reviewing the skeleton, three issues were identified and addressed:
+
+1. **`priority` changed from `str` to a `Priority` enum** — The original design used plain strings ("low", "medium", "high"), which are easy to mistype and hard to validate. Switching to an `Enum` makes invalid priorities impossible and allows direct comparison in `is_high_priority()`.
+
+2. **`Owner.can_fit()` signature changed to include `used_minutes`** — The original method only took a `task`, but had no way to know how much time was already consumed. Without `used_minutes`, the method couldn't actually check whether the task fits in the *remaining* time. Adding this parameter makes the check stateless and reusable.
+
+3. **`Scheduler.explain_plan()` was removed** — The method was redundant: reasoning is already stored inside `ScheduledPlan.reasoning`. Having a separate method on `Scheduler` to produce the same data created ambiguity about who was responsible for building it. The responsibility was consolidated into `generate_schedule()`, which populates `ScheduledPlan.reasoning` directly.
 
 ---
 
@@ -18,13 +101,17 @@
 
 **a. Constraints and priorities**
 
-- What constraints does your scheduler consider (for example: time, priority, preferences)?
-- How did you decide which constraints mattered most?
+The scheduler considers three constraints, in order of importance:
+
+1. **Scheduled time** — Tasks with a specific `scheduled_time` (HH:MM) are placed first, in chronological order. This respects real-world commitments like medication times.
+2. **Priority** — Within each time group, high-priority tasks are scheduled before medium and low. This ensures critical care (medication, feeding) happens before optional enrichment.
+3. **Available time** — The owner's `available_minutes` acts as a hard cap. The scheduler greedily fills time slots and skips tasks that don't fit, recording why each was skipped.
+
+Time and priority were ranked highest because a pet owner's day is structured around fixed events (vet appointments, medication windows) and urgent needs come first when time is limited.
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+**Conflict detection uses exact time matches, not overlapping durations.** Two tasks at "07:00" trigger a warning, but a 30-minute task at "07:00" and a task at "07:15" do not, even though they clearly overlap. This was a deliberate simplification — full interval-overlap detection would require tracking start and end times for every task, adding significant complexity. For a pet care app where most tasks are short and scheduled at round times (7:00, 8:00, 10:00), exact-match detection catches the most common conflicts with minimal implementation cost. A future iteration could switch to interval-based detection if finer granularity is needed.
 
 ---
 

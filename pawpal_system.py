@@ -1,12 +1,19 @@
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from enum import Enum
-from typing import List
+from typing import List, Optional
 
 
 class Priority(Enum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
+
+
+class Frequency(Enum):
+    ONCE = "once"
+    DAILY = "daily"
+    WEEKLY = "weekly"
 
 
 PRIORITY_ORDER = {Priority.HIGH: 0, Priority.MEDIUM: 1, Priority.LOW: 2}
@@ -21,14 +28,35 @@ class Task:
     duration_minutes: int
     priority: Priority
     completed: bool = False
+    scheduled_time: Optional[str] = None  # "HH:MM" format
+    frequency: Frequency = Frequency.ONCE
+    due_date: Optional[date] = None
 
     def is_high_priority(self) -> bool:
         """Return True if this task has high priority."""
         return self.priority == Priority.HIGH
 
-    def mark_complete(self) -> None:
-        """Mark this task as completed."""
+    def mark_complete(self) -> Optional["Task"]:
+        """Mark this task as completed. Returns a new Task for the next occurrence if recurring."""
         self.completed = True
+        if self.frequency == Frequency.DAILY:
+            return self._create_next_occurrence(days=1)
+        elif self.frequency == Frequency.WEEKLY:
+            return self._create_next_occurrence(days=7)
+        return None
+
+    def _create_next_occurrence(self, days: int) -> "Task":
+        """Create the next recurring instance of this task."""
+        next_due = (self.due_date or date.today()) + timedelta(days=days)
+        return Task(
+            title=self.title,
+            task_type=self.task_type,
+            duration_minutes=self.duration_minutes,
+            priority=self.priority,
+            scheduled_time=self.scheduled_time,
+            frequency=self.frequency,
+            due_date=next_due,
+        )
 
 
 @dataclass
@@ -44,6 +72,12 @@ class Pet:
     def add_task(self, task: Task) -> None:
         """Add a care task to this pet."""
         self.tasks.append(task)
+
+    def complete_task(self, task: Task) -> None:
+        """Mark a task complete and auto-add the next occurrence if recurring."""
+        next_task = task.mark_complete()
+        if next_task:
+            self.tasks.append(next_task)
 
     def summary(self) -> str:
         """Return a readable one-line description of the pet."""
@@ -73,7 +107,7 @@ class Owner:
 
 
 class ScheduledPlan:
-    """The output of the scheduler — an ordered plan with reasoning."""
+    """The output of the scheduler — an ordered plan with reasoning and conflict warnings."""
 
     def __init__(
         self,
@@ -81,20 +115,31 @@ class ScheduledPlan:
         skipped_tasks: List[Task],
         total_time: int,
         reasoning: dict,
+        conflicts: List[str],
     ):
         self.scheduled_tasks = scheduled_tasks
         self.skipped_tasks = skipped_tasks
         self.total_time = total_time
         self.reasoning = reasoning
+        self.conflicts = conflicts
 
     def display(self) -> str:
         """Format the plan as a readable string for terminal or UI output."""
         lines = ["=== Today's Schedule ===\n"]
 
+        if self.conflicts:
+            lines.append("⚠️  CONFLICTS DETECTED:")
+            for c in self.conflicts:
+                lines.append(f"  ⚠ {c}")
+            lines.append("")
+
         if self.scheduled_tasks:
             for i, task in enumerate(self.scheduled_tasks, 1):
                 reason = self.reasoning.get(task.title, "")
-                lines.append(f"  {i}. {task.title} ({task.duration_minutes} min) [{task.priority.value}]")
+                time_str = f" @ {task.scheduled_time}" if task.scheduled_time else ""
+                lines.append(
+                    f"  {i}. {task.title}{time_str} ({task.duration_minutes} min) [{task.priority.value}]"
+                )
                 if reason:
                     lines.append(f"     → {reason}")
         else:
@@ -119,10 +164,59 @@ class Scheduler:
     def __init__(self, owner: Owner):
         self.owner = owner
 
+    def sort_by_time(self, tasks: List[Task]) -> List[Task]:
+        """Sort tasks by their scheduled_time (HH:MM). Tasks without a time go to the end."""
+        return sorted(tasks, key=lambda t: (t.scheduled_time is None, t.scheduled_time or ""))
+
+    def filter_tasks(
+        self,
+        tasks: List[Task],
+        pet_name: Optional[str] = None,
+        completed: Optional[bool] = None,
+        task_type: Optional[str] = None,
+    ) -> List[Task]:
+        """Filter tasks by pet name, completion status, or task type."""
+        result = tasks
+        if pet_name is not None:
+            pet_task_titles = set()
+            for pet in self.owner.pets:
+                if pet.name == pet_name:
+                    pet_task_titles = {t.title for t in pet.tasks}
+            result = [t for t in result if t.title in pet_task_titles]
+        if completed is not None:
+            result = [t for t in result if t.completed == completed]
+        if task_type is not None:
+            result = [t for t in result if t.task_type == task_type]
+        return result
+
+    def detect_conflicts(self, tasks: List[Task]) -> List[str]:
+        """Detect tasks scheduled at the same time and return warning messages."""
+        warnings: List[str] = []
+        timed = [t for t in tasks if t.scheduled_time is not None]
+        by_time: dict[str, List[Task]] = {}
+        for task in timed:
+            by_time.setdefault(task.scheduled_time, []).append(task)
+        for time_slot, group in by_time.items():
+            if len(group) > 1:
+                names = ", ".join(f'"{t.title}"' for t in group)
+                warnings.append(f"Time conflict at {time_slot}: {names}")
+        return warnings
+
     def generate_schedule(self) -> ScheduledPlan:
-        """Sort all tasks by priority, greedily schedule what fits, and record reasoning."""
+        """Sort tasks by time then priority, detect conflicts, greedily schedule what fits."""
         all_tasks = self.owner.get_all_tasks()
-        sorted_tasks = sorted(all_tasks, key=lambda t: PRIORITY_ORDER[t.priority])
+
+        # Sort: first by scheduled time, then by priority within each group
+        sorted_tasks = sorted(
+            all_tasks,
+            key=lambda t: (
+                t.scheduled_time is None,
+                t.scheduled_time or "",
+                PRIORITY_ORDER[t.priority],
+            ),
+        )
+
+        conflicts = self.detect_conflicts(all_tasks)
 
         scheduled: List[Task] = []
         skipped: List[Task] = []
@@ -149,4 +243,5 @@ class Scheduler:
             skipped_tasks=skipped,
             total_time=used_minutes,
             reasoning=reasoning,
+            conflicts=conflicts,
         )
