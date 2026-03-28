@@ -16,10 +16,31 @@ The system is designed around three core user actions:
 
 ```mermaid
 classDiagram
-    class Owner {
-        +String name
-        +int available_minutes
-        +can_fit(task) bool
+    class Priority {
+        <<enumeration>>
+        LOW
+        MEDIUM
+        HIGH
+    }
+
+    class Frequency {
+        <<enumeration>>
+        ONCE
+        DAILY
+        WEEKLY
+    }
+
+    class Task {
+        +String title
+        +String task_type
+        +int duration_minutes
+        +Priority priority
+        +bool completed
+        +String scheduled_time
+        +Frequency frequency
+        +date due_date
+        +is_high_priority() bool
+        +mark_complete() Task
     }
 
     class Pet {
@@ -27,25 +48,27 @@ classDiagram
         +String species
         +int age
         +List~String~ special_needs
+        +List~Task~ tasks
+        +add_task(task)
+        +complete_task(task)
         +summary() String
     }
 
-    class Task {
-        +String title
-        +String task_type
-        +int duration_minutes
-        +String priority
-        +bool completed
-        +is_high_priority() bool
-        +mark_complete()
+    class Owner {
+        +String name
+        +int available_minutes
+        +List~Pet~ pets
+        +add_pet(pet)
+        +get_all_tasks() List~Task~
+        +can_fit(task, used_minutes) bool
     }
 
     class Scheduler {
-        +List~Task~ tasks
         +Owner owner
-        +Pet pet
         +generate_schedule() ScheduledPlan
-        +explain_plan(plan) dict
+        +sort_by_time(tasks) List~Task~
+        +filter_tasks(tasks, pet_name, completed, task_type) List~Task~
+        +detect_conflicts(tasks) List~String~
     }
 
     class ScheduledPlan {
@@ -53,14 +76,16 @@ classDiagram
         +List~Task~ skipped_tasks
         +int total_time
         +dict reasoning
+        +List~String~ conflicts
         +display() String
     }
 
-    Owner "1" --> "1" Pet : owns
+    Owner "1" --> "many" Pet : owns
+    Pet "1" --> "many" Task : has
+    Task --> Priority : uses
+    Task --> Frequency : uses
     Owner "1" --> "1" Scheduler : uses
-    Scheduler "1" --> "many" Task : manages
     Scheduler "1" --> "1" ScheduledPlan : produces
-    ScheduledPlan "1" --> "many" Task : contains
 ```
 
 **Building blocks — main objects in the system:**
@@ -119,13 +144,25 @@ Time and priority were ranked highest because a pet owner's day is structured ar
 
 **a. How you used AI**
 
-- How did you use AI tools during this project (for example: design brainstorming, debugging, refactoring)?
-- What kinds of prompts or questions were most helpful?
+AI (Claude Code in VS Code) was used throughout every phase:
+
+- **Design brainstorming** — Identifying core user actions and building blocks, then generating a Mermaid.js UML diagram from the brainstormed objects.
+- **Code generation** — Producing class skeletons from UML, then fleshing out full implementations with sorting, filtering, conflict detection, and recurring task logic.
+- **Code review** — Asking AI to review the skeleton for missing relationships and logic bottlenecks, which caught three real issues (enum for priority, stateless can_fit, redundant explain_plan).
+- **Test generation** — Drafting both happy-path and edge-case tests, then expanding coverage from 10 to 27 tests.
+- **Documentation** — Generating docstrings, README sections, and reflection content.
+
+The most helpful prompts were specific and grounded in existing code: "Based on my skeleton in pawpal_system.py, what's missing?" worked much better than vague "make it better" requests.
 
 **b. Judgment and verification**
 
-- Describe one moment where you did not accept an AI suggestion as-is.
-- How did you evaluate or verify what the AI suggested?
+The initial AI-generated skeleton used a plain `str` for priority and had `Scheduler` accept a `tasks` list directly. This was rejected because:
+
+1. Raw strings for priority are fragile — switching to a `Priority` enum prevents invalid values at the type level.
+2. `Scheduler` should pull tasks from `Owner.get_all_tasks()` rather than accepting a flat list, since the owner-pet-task hierarchy is the source of truth.
+3. The `explain_plan()` method was redundant with `ScheduledPlan.reasoning` — having two places that produce reasoning creates ambiguity.
+
+Verification: after making changes, we ran the full test suite and `main.py` demo to confirm behavior matched expectations. The UML was also updated to reflect the actual final design rather than the initial draft.
 
 ---
 
@@ -161,12 +198,14 @@ Confidence: **4 out of 5**. All happy paths and key edge cases pass. With more t
 
 **a. What went well**
 
-- What part of this project are you most satisfied with?
+The clean separation between the logic layer (`pawpal_system.py`) and the UI (`app.py`) worked out well. Because all scheduling logic lives in standalone Python classes, it was easy to test via `pytest` and demo via `main.py` before touching Streamlit. The reasoning system — where every scheduled and skipped task gets a human-readable explanation — makes the scheduler transparent rather than a black box.
 
 **b. What you would improve**
 
-- If you had another iteration, what would you improve or redesign?
+1. **Overlap-based conflict detection** — Currently only exact time matches are flagged. A task at 07:00 lasting 30 minutes should conflict with a task at 07:15, but it doesn't. This would require tracking start/end intervals.
+2. **Data persistence** — Right now everything resets when the Streamlit app restarts. Adding JSON save/load would make the app practical for daily use.
+3. **Task editing and deletion** — Users can add tasks but can't modify or remove them through the UI.
 
 **c. Key takeaway**
 
-- What is one important thing you learned about designing systems or working with AI on this project?
+AI is most effective when you treat it as a collaborator, not an oracle. The best results came from giving it specific context (existing code, UML, concrete questions) and critically reviewing its output — catching the redundant `explain_plan()` method and the missing `used_minutes` parameter before they became real bugs. The human role is to set the architecture, catch design flaws, and make judgment calls about tradeoffs. AI accelerates the implementation, but the design decisions still need to come from someone who understands the problem.
