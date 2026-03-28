@@ -215,6 +215,41 @@ def test_once_task_does_not_recur():
     assert len(pet.tasks) == 1  # no new task created
 
 
+# --- JSON persistence ---
+
+def test_save_and_load_json(tmp_path):
+    """Owner data should survive a round-trip through JSON."""
+    path = str(tmp_path / "data.json")
+
+    owner = Owner(name="Jordan", available_minutes=90)
+    pet = Pet(name="Mochi", species="dog", age=3, special_needs=["allergy"])
+    pet.add_task(Task("Walk", "walk", 30, Priority.HIGH, scheduled_time="07:00", frequency=Frequency.DAILY, due_date=date.today()))
+    owner.add_pet(pet)
+
+    owner.save_to_json(path)
+    loaded = Owner.load_from_json(path)
+
+    assert loaded is not None
+    assert loaded.name == "Jordan"
+    assert loaded.available_minutes == 90
+    assert len(loaded.pets) == 1
+    assert loaded.pets[0].name == "Mochi"
+    assert loaded.pets[0].special_needs == ["allergy"]
+    assert len(loaded.pets[0].tasks) == 1
+    t = loaded.pets[0].tasks[0]
+    assert t.title == "Walk"
+    assert t.priority == Priority.HIGH
+    assert t.frequency == Frequency.DAILY
+    assert t.scheduled_time == "07:00"
+    assert t.due_date == date.today()
+
+
+def test_load_from_missing_file(tmp_path):
+    """Loading from a non-existent file should return None."""
+    result = Owner.load_from_json(str(tmp_path / "nope.json"))
+    assert result is None
+
+
 # --- Edge cases ---
 
 def test_schedule_with_no_tasks():

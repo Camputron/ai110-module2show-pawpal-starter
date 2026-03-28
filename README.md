@@ -12,6 +12,8 @@ A smart pet care scheduling assistant built with Python and Streamlit. PawPal+ h
 - **Recurring tasks** — Daily and weekly tasks auto-generate their next occurrence when completed
 - **Filtering** — Filter tasks by pet name, task type, or completion status
 - **Transparent reasoning** — Every scheduled or skipped task includes an explanation of why
+- **Data persistence** — Owner, pets, and tasks are saved to `data.json` and auto-loaded on startup
+- **Visual UI** — Color-coded priorities (🔴 high, 🟡 medium, 🟢 low) and task-type emojis (🚶 walk, 🍽️ feeding, 💊 meds, ✂️ grooming, 🧸 enrichment)
 
 ## Getting Started
 

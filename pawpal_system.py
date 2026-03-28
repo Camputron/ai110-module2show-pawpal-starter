@@ -1,6 +1,8 @@
+import json
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import Enum
+from pathlib import Path
 from typing import List, Optional
 
 
@@ -58,6 +60,33 @@ class Task:
             due_date=next_due,
         )
 
+    def to_dict(self) -> dict:
+        """Serialize this task to a plain dictionary."""
+        return {
+            "title": self.title,
+            "task_type": self.task_type,
+            "duration_minutes": self.duration_minutes,
+            "priority": self.priority.value,
+            "completed": self.completed,
+            "scheduled_time": self.scheduled_time,
+            "frequency": self.frequency.value,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Task":
+        """Deserialize a task from a plain dictionary."""
+        return cls(
+            title=data["title"],
+            task_type=data["task_type"],
+            duration_minutes=data["duration_minutes"],
+            priority=Priority(data["priority"]),
+            completed=data.get("completed", False),
+            scheduled_time=data.get("scheduled_time"),
+            frequency=Frequency(data.get("frequency", "once")),
+            due_date=date.fromisoformat(data["due_date"]) if data.get("due_date") else None,
+        )
+
 
 @dataclass
 class Pet:
@@ -84,6 +113,28 @@ class Pet:
         needs = f", special needs: {', '.join(self.special_needs)}" if self.special_needs else ""
         return f"{self.name} ({self.species}, age {self.age}{needs})"
 
+    def to_dict(self) -> dict:
+        """Serialize this pet to a plain dictionary."""
+        return {
+            "name": self.name,
+            "species": self.species,
+            "age": self.age,
+            "special_needs": self.special_needs,
+            "tasks": [t.to_dict() for t in self.tasks],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Pet":
+        """Deserialize a pet from a plain dictionary."""
+        pet = cls(
+            name=data["name"],
+            species=data["species"],
+            age=data["age"],
+            special_needs=data.get("special_needs", []),
+        )
+        pet.tasks = [Task.from_dict(t) for t in data.get("tasks", [])]
+        return pet
+
 
 @dataclass
 class Owner:
@@ -104,6 +155,36 @@ class Owner:
     def can_fit(self, task: Task, used_minutes: int) -> bool:
         """Return True if the task fits within the owner's remaining available time."""
         return used_minutes + task.duration_minutes <= self.available_minutes
+
+    def to_dict(self) -> dict:
+        """Serialize the owner and all pets/tasks to a plain dictionary."""
+        return {
+            "name": self.name,
+            "available_minutes": self.available_minutes,
+            "pets": [p.to_dict() for p in self.pets],
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Owner":
+        """Deserialize an owner from a plain dictionary."""
+        owner = cls(
+            name=data["name"],
+            available_minutes=data["available_minutes"],
+        )
+        owner.pets = [Pet.from_dict(p) for p in data.get("pets", [])]
+        return owner
+
+    def save_to_json(self, path: str = "data.json") -> None:
+        """Save all owner data (pets, tasks) to a JSON file."""
+        Path(path).write_text(json.dumps(self.to_dict(), indent=2))
+
+    @classmethod
+    def load_from_json(cls, path: str = "data.json") -> Optional["Owner"]:
+        """Load owner data from a JSON file. Returns None if the file doesn't exist."""
+        p = Path(path)
+        if not p.exists():
+            return None
+        return cls.from_dict(json.loads(p.read_text()))
 
 
 class ScheduledPlan:
