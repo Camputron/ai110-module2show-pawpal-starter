@@ -133,13 +133,27 @@ Time and priority were ranked highest because a pet owner's day is structured ar
 
 **a. What you tested**
 
-- What behaviors did you test?
-- Why were these tests important?
+The test suite (27 tests) covers:
+
+- **Task basics** — `mark_complete()` changes status, `is_high_priority()` returns correct values
+- **Pet management** — adding tasks increases the list, `summary()` includes special needs when present
+- **Owner logic** — `get_all_tasks()` excludes completed tasks, `can_fit()` correctly checks remaining time
+- **Scheduling** — priority ordering (high before low), skipping tasks that exceed available time
+- **Sorting** — time-based sort puts scheduled tasks in chronological order, unscheduled last
+- **Filtering** — correctly isolates tasks by pet name or task type
+- **Conflict detection** — flags two tasks at the same time, handles three-way conflicts, no false positives
+- **Recurring tasks** — daily tasks create next occurrence +1 day, weekly +7 days, one-time tasks don't recur
+- **Edge cases** — no pets, no tasks, zero available minutes, exact time fit, all tasks already completed, display output format
+
+These tests are important because the scheduler makes decisions on behalf of the user (what to include, what to skip). If the priority logic or time-fitting is wrong, the owner could miss critical care tasks like medication.
 
 **b. Confidence**
 
-- How confident are you that your scheduler works correctly?
-- What edge cases would you test next if you had more time?
+Confidence: **4 out of 5**. All happy paths and key edge cases pass. With more time, the next tests would be:
+
+- Overlap-based conflict detection (a 30-min task at 07:00 overlapping with a task at 07:15)
+- Recurring tasks chaining (completing the auto-created next occurrence should create yet another)
+- Large-scale stress testing (100+ tasks to verify performance)
 
 ---
 

@@ -213,3 +213,111 @@ def test_once_task_does_not_recur():
 
     pet.complete_task(task)
     assert len(pet.tasks) == 1  # no new task created
+
+
+# --- Edge cases ---
+
+def test_schedule_with_no_tasks():
+    """An owner with pets but no tasks should get an empty schedule."""
+    owner = Owner(name="Jordan", available_minutes=60)
+    owner.add_pet(Pet(name="Mochi", species="dog", age=3))
+
+    plan = Scheduler(owner).generate_schedule()
+    assert plan.scheduled_tasks == []
+    assert plan.skipped_tasks == []
+    assert plan.total_time == 0
+    assert plan.conflicts == []
+
+
+def test_schedule_with_no_pets():
+    """An owner with no pets should get an empty schedule."""
+    owner = Owner(name="Jordan", available_minutes=60)
+    plan = Scheduler(owner).generate_schedule()
+    assert plan.scheduled_tasks == []
+    assert plan.total_time == 0
+
+
+def test_schedule_zero_available_minutes():
+    """With zero available time, all tasks should be skipped."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(Task("Walk", "walk", 10, Priority.HIGH))
+
+    owner = Owner(name="Jordan", available_minutes=0)
+    owner.add_pet(pet)
+
+    plan = Scheduler(owner).generate_schedule()
+    assert len(plan.scheduled_tasks) == 0
+    assert len(plan.skipped_tasks) == 1
+
+
+def test_task_exactly_fills_remaining_time():
+    """A task that exactly matches remaining time should be scheduled, not skipped."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(Task("Walk", "walk", 60, Priority.HIGH))
+
+    owner = Owner(name="Jordan", available_minutes=60)
+    owner.add_pet(pet)
+
+    plan = Scheduler(owner).generate_schedule()
+    assert len(plan.scheduled_tasks) == 1
+    assert plan.total_time == 60
+
+
+def test_three_way_time_conflict():
+    """Three tasks at the same time should all appear in the conflict warning."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(Task("Walk", "walk", 10, Priority.HIGH, scheduled_time="08:00"))
+    pet.add_task(Task("Feed", "feeding", 10, Priority.HIGH, scheduled_time="08:00"))
+    pet.add_task(Task("Meds", "medication", 5, Priority.HIGH, scheduled_time="08:00"))
+
+    owner = Owner(name="Jordan", available_minutes=120)
+    owner.add_pet(pet)
+
+    plan = Scheduler(owner).generate_schedule()
+    assert len(plan.conflicts) == 1
+    assert "Walk" in plan.conflicts[0]
+    assert "Feed" in plan.conflicts[0]
+    assert "Meds" in plan.conflicts[0]
+
+
+def test_all_tasks_completed_returns_empty_schedule():
+    """If every task is already completed, the schedule should be empty."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(Task("Walk", "walk", 30, Priority.HIGH, completed=True))
+    pet.add_task(Task("Feed", "feeding", 10, Priority.HIGH, completed=True))
+
+    owner = Owner(name="Jordan", available_minutes=60)
+    owner.add_pet(pet)
+
+    plan = Scheduler(owner).generate_schedule()
+    assert plan.scheduled_tasks == []
+    assert plan.total_time == 0
+
+
+def test_pet_summary_with_special_needs():
+    pet = Pet(name="Luna", species="cat", age=5, special_needs=["thyroid medication", "soft food"])
+    assert "thyroid medication" in pet.summary()
+    assert "soft food" in pet.summary()
+
+
+def test_pet_summary_without_special_needs():
+    pet = Pet(name="Mochi", species="dog", age=3)
+    summary = pet.summary()
+    assert "special needs" not in summary
+    assert "Mochi" in summary
+
+
+def test_display_output_includes_scheduled_tasks():
+    """ScheduledPlan.display() should include all scheduled task titles."""
+    pet = Pet(name="Mochi", species="dog", age=3)
+    pet.add_task(Task("Walk", "walk", 30, Priority.HIGH))
+    pet.add_task(Task("Feed", "feeding", 10, Priority.MEDIUM))
+
+    owner = Owner(name="Jordan", available_minutes=60)
+    owner.add_pet(pet)
+
+    plan = Scheduler(owner).generate_schedule()
+    output = plan.display()
+    assert "Walk" in output
+    assert "Feed" in output
+    assert "Total time: 40 min" in output

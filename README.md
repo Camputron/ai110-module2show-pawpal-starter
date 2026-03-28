@@ -51,3 +51,24 @@ The scheduler includes several algorithmic features beyond basic task listing:
 - **Filtering** — Tasks can be filtered by pet name, completion status, or task type.
 - **Conflict detection** — The scheduler warns when two or more tasks are booked at the same time.
 - **Recurring tasks** — Daily and weekly tasks auto-generate their next occurrence when marked complete, using `timedelta` for accurate date calculation.
+
+## Testing PawPal+
+
+Run the test suite with:
+
+```bash
+python -m pytest tests/ -v
+```
+
+The suite includes 27 tests covering:
+
+- **Task basics** — completion status, priority checks
+- **Pet management** — adding tasks, summary output
+- **Owner logic** — time fitting, filtering completed tasks
+- **Scheduling** — priority ordering, time-based sorting, skipping overflows
+- **Filtering** — by pet name and task type
+- **Conflict detection** — same-time warnings, three-way conflicts
+- **Recurring tasks** — daily, weekly, and one-time task behavior
+- **Edge cases** — no pets, no tasks, zero available time, exact time fit, all tasks completed
+
+**Confidence level: 4/5** — All happy paths and key edge cases are covered. The main gap is overlap-based conflict detection (we only check exact time matches, not overlapping durations).
