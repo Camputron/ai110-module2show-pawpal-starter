@@ -128,7 +128,7 @@ if owner.pets:
         sorted_tasks = scheduler.sort_by_time(all_tasks)
         task_data = [
             {
-                "": TASK_EMOJIS.get(t.task_type, "📋"),
+                "Type": f"{TASK_EMOJIS.get(t.task_type, '📋')} {t.task_type}",
                 "Time": t.scheduled_time or "—",
                 "Task": t.title,
                 "Duration": f"{t.duration_minutes} min",
@@ -137,7 +137,7 @@ if owner.pets:
             }
             for t in sorted_tasks
         ]
-        st.table(task_data)
+        st.dataframe(task_data, hide_index=True, use_container_width=True)
 
     # --- Filter tasks ---
     if len(owner.pets) > 1:
@@ -146,15 +146,15 @@ if owner.pets:
         if filter_pet != "All":
             filtered = scheduler.filter_tasks(all_tasks, pet_name=filter_pet)
             if filtered:
-                st.table([
+                st.dataframe([
                     {
-                        "": TASK_EMOJIS.get(t.task_type, "📋"),
+                        "Type": f"{TASK_EMOJIS.get(t.task_type, '📋')} {t.task_type}",
                         "Task": t.title,
                         "Duration": f"{t.duration_minutes} min",
                         "Priority": f"{PRIORITY_COLORS[t.priority.value]} {t.priority.value}",
                     }
                     for t in filtered
-                ])
+                ], hide_index=True, use_container_width=True)
             else:
                 st.info(f"No pending tasks for {filter_pet}.")
 
