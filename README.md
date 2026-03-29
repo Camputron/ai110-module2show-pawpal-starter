@@ -15,6 +15,10 @@ A smart pet care scheduling assistant built with Python and Streamlit. PawPal+ h
 - **Data persistence** — Owner, pets, and tasks are saved to `data.json` and auto-loaded on startup
 - **Visual UI** — Color-coded priorities (🔴 high, 🟡 medium, 🟢 low) and task-type emojis (🚶 walk, 🍽️ feeding, 💊 meds, ✂️ grooming, 🧸 enrichment)
 
+## Demo
+
+![PawPal+ App](demo.gif)
+
 ## Getting Started
 
 ### Setup
